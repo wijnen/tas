@@ -201,6 +201,6 @@ for i, (m, s) in enumerate(zip(maps, spr)):
 		walled = Image.blend(enemiesimg[sp[2]], wallimg, alpha)
 		img.paste(walled, (targetx, targety, targetx + 16, targety + 16))
 		#draw.text((targetx, targety), '%x' % (0xef70 + 4 * j))
-		draw.text((targetx, targety - 8), '%x' % (sp[3]))
+		draw.text((targetx, targety - 8), '%02x' % (sp[3]))
 	img.save('/tmp/level-%d.png' % (i + 1))
 	#print('\n'.join(''.join(' .+#!'[m[y][x]] for x in range(w)) for y in range(h)))

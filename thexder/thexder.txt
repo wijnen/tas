@@ -46,7 +46,7 @@ ix.15:
 ix.16:
 ix.17:
 ix.18:
-ix.19: iy.3 & 0xf	- hitpoints.
+ix.19: iy.3 & 0xf	- shield.
 ix.1a:
 ix.1b: source (iy) low
 ix.1c: source (iy) high
