@@ -1,0 +1,328 @@
+Level:
+
+78 characters per level.
+Source in blokken van 4 characters.
+ee2a: pointertabel van row-offsets (tafel van 78).
+ce58: levelbron; 2 bit per character. (ook: algemeen scratchpad)
+ead8: decoded level, 1 byte per character (range 0-3) (local view)
+8e1f: real levelsource, level 1
+6a20: column source, (level 1 only?)
+e800: compressed column source; 0xb bytes per column (for 0x2c rows).
+7692: compressed(6d68) source for compressed(e800) source.
+
+an enemy:
+
+iy, records of 4 bytes from ef70
+ix, records of 0x20 bytes from e320
+
+iy.0: ff:end of list.	&3f: world y; b7=!ix.1f.b4; b6=ix.1f.b5 
+iy.1: world x low
+iy.2: &1: world x high
+iy.3: &f==f: behind wall
+
+
+ix.00: bit 7 set->hidden
+ix.01: bit 6,0 == 1,0: hidden
+ix.02:
+ix.03:
+ix.04: current shape as name table code
+ix.05:
+ix.06:
+ix.07:
+ix.08:
+ix.09:
+ix.0a:
+ix.0b:
+ix.0c:
+ix.0d:
+ix.0e:
+ix.0f:
+ix.10:
+ix.11: iy.3 >> 4	- brain; see below.
+ix.12: iy.1		world x low
+ix.13: iy.2 & 1		world x high
+ix.14: iy.0 & 3f	world y
+ix.15:
+ix.16:
+ix.17:
+ix.18:
+ix.19: iy.3 & 0xf	- hitpoints.
+ix.1a:
+ix.1b: source (iy) low
+ix.1c: source (iy) high
+ix.1d: iy.2 >> 1	; shape.
+ix.1e: 5a72[iy.2 & ~1]
+ix.1f: bit 4: hidden
+
+Brains:
+0 - no movement.
+1 - up and down following player
+2 - fall down
+3 - follow player horizontally; don't move vertically
+4 - circles with target when close
+5 - fall down, move to player horizontally
+6 - like 5, with with small jumps
+7 - fall down and roll away (balls)
+8 - same as 3?
+
+
+bit 7 is set in iy.0 if bit 4 is clear in ix.1f
+
+e3c2: screen y
+e3c3: screen x
+e3d2: world x
+e3d4: world y
+
+f2b1: screen x pos
+f2b3: screen y pos
+f2e2: current level pointer
+
+25, 26, 17, 1f: hide with 2, 1, 3, 3
+
+6a0a: de = sprite pattern a vram address
+
+0x20 bytes reversed and copied from ce78 to e800
+ce78 is unpacked with 6d68 from 7692
+
+Bron: final byte: ff
+hl = src
+de = dest
+
+6d68:	// decode: ff ff = end; ff byte count = repeat; other = byte.
+while True:
+	while (*hl != 0xff)
+		*de++ = *hl++
+	if (*hl == 0xff) return
+	b=*hl++
+	while(--b) *de++=a
+
+6b3b:	// build_level_column.
+if (*f2e4)
+	--*f2e4;
+	a = *f2e5
+else {
+	a = *de++ + 1
+	if (a == 0) {
+		a = *f2e5 = *de++ + 1
+		*f2e4 = *de++ - 1
+	}
+}
+hl = 0xe800 + 0xb * a
+de2 = 0xedd0
+for b' in range(0xb) {
+	*de2++ = *hl >> 6
+	*de2++ = (*hl & 0x30) >> 4
+	*de2++ = (*hl & 0xc) >> 2
+	*de2++ = (*hl & 0x3)
+	++hl
+}
+hl = 0xedd0
+for b' in range(0x2c) {
+	*hl++ <<= 2 * (*0xf2e1 - 1);
+}
+return
+
+
+6d68:
+if *hl != 0xff:
+	*de++=*hl
+	++hl
+
+else:
+
+
+6925:
+	decode 7692 to ce58
+	send 4f8 bytes from ce58 to pgt in vram (0x0000, 0x0800, 0x1000)
+	decode 78b8 to ce58
+	send 4f8 bytes from ce58 to ct in vram (0x2000, 0x2800, 0x3000)
+	decode 74e8 to ce58 using 0x55 instead of 0xff.
+	send first 0x20 bytes to sprite pgt (1800)
+	send next mirrored
+	etc.
+
+bc79:
+	eee0 = 0
+	eeeb + k*0x10 = 0 for k in range(5)
+	write_psg(reg = 7, data = 0xbf)
+
+
+6d12?
+6a69?
+
+
+
+6a41: (de = 8eb3)
+	hl = e800
+	while True:
+		c = *de++
+		if c & 0xf0 != 0x50:
+			*hl++ = c
+			continue
+		a = *de++
+		if a == 0:
+			break
+		b = a
+		a = 4 times c & 3.
+		for i in range(b):
+			*hl++ = a
+	continue as 6a6e
+
+41ae: write view to ead8 from:
+4166:
+	if ix[6] & (1 << 3) || (*e315 & 0xc):
+		41d0()
+	hl = 0xce58 + row[Y] + X / 4
+	de = 0xead8
+	for b' in range(21):
+		for b in range(9):
+			*de++ = *hl >> 6
+			*de++ = (*hl & 0x30) >> 4
+			*de++ = (*hl & 0xc) >> 2
+			*de++ = (*hl & 0x3)
+			++hl
+		hl += 0x78 - 9
+
+6a6e: unpack level
+	ce58[:14a0] = 0
+	*f2e4 = 0
+	de = *current_level
+	for b' in range(0x78):
+		for b'' in range(4, 0, -1):
+			*f2e1 = b''
+			build_level_column()	# From e800[de++] to edd0
+			merge with ce58[]
+
+
+46ec: setup level
+	4560()	; cls()
+	f2ea = 0
+	*0xe332 = 0xf4
+	6d1f()
+	lvl = 4825 + level * 10	; f2d8
+	*f2eb = lvl[0] - *f2ee	; 16-bit.
+	de = lvl[2]
+	6bae()	; set up enemy sprite patterns.
+	685e()	; set up own sprite patterns(?)
+	*current_level = lvl[4]
+	*f2e6 = lvl[6]
+	*f2ac |= 1 << 2
+	de = lvl[8]
+	unpack_level()
+	*f2ac &= ~(1 << 2)
+	68be()	; unpack 73e4 into ea00, copy 0x48 bytes to c240
+	4560()	; clear sprite attributes and pattern name table.
+	4548()	; clear 6e0 bytes from e320, then 4560()
+	4783(47a4) ; clear e300[:0x20*(2a+0e):0x20] (first 1, 2a 0, e *hl++)
+	4125()
+
+
+4560():
+	for b in range(0x38):
+		e320[0x20 * b].w = 0
+	filvrm(a = 0xd0, hl = 0x3b00, bc = 0x80)	; fill sprite attrs.
+	*e305 = 0
+
+4548():
+	
+
+6d1f():
+	unpack 8c70 to ce58
+	*f2df = 0x00f0
+	*f2a9 = 0x0018
+	hl = level * 24 + 0xce58
+	de = 8
+	6ca0()
+
+
+6bae(de):	# de is level property: pointer to used sprites.
+	unpack 79e4 to c000 (0x1500 bytes)	; enemy patterns
+	copy 4 times 8 bytes from f2f0 to ca60++
+	a'=0x60
+	while True:
+		a = *de
+		if a == 0xff:
+			return
+		if a == 0:
+			a' = 0x10
+		++de
+		eea0[a] = a'
+		hl = 745e + 3 * a
+		a, hl = *hl
+		while a & 3:
+			if a & 3 == 1:
+				6c85()
+			elif a & 3 == 2:
+				6c23()
+			else:
+				6cde()
+			hl += 0x20
+			a >>= 2
+
+6c85:
+	*f2df = 0xa80
+	*f2a9 = 0x20
+	de = 8 * a'
+	a' += 4
+	send to vram (pgt, size 0x20, source hl)
+	hl += 0xa80
+	send to vram(ct, size 0x20, source hl)
+
+
+685e:
+	unpack 6d7f to ce58
+	copy 0x90 bytes from ce58 to 0xc000, 5 times.
+	for a in range(9):
+		copy 0xc0 bytes from hl to de
+		de += 0x60
+	ix = 0xc000
+	iy = 0xc090
+	for b in range(5):
+		68d3(c = 3)
+		ix += 0x90
+		iy += 0x90
+	iy += 0x30
+	for b in range(9):
+		68d3(c = 4)
+		ix += 0xc0
+		iy += 0xc0
+	unpack 73e4 to ea00
+	copy 0x48 bytes from ea00 to c240
+
+68d3(c):
+	for i in range(c):
+		mirror ix + [0, 8, 0x10] into iy + [0, 8, 0x10]
+		ix += 0x10
+		iy += 0x10
+
+6ab1:
+	de = *f2e6 (=lvl[6])
+	a = *de++	; = num_enemies
+	hl = ef70	; target.
+	for b in range(4):
+		for b2 in range(a):
+			a = *de++
+			if a != 0xff:
+				*hl = a
+				hl += 4
+				continue
+			else:
+				*f2a9 = *de++
+				b2 -= *hl - 1
+				b = *de++
+				*hl = *f2a9
+				...
+			...
+		hl += 1
+	ix = ef70
+	for b in range(num_enemies):
+		if ix[3] & 0xf == 0xf:
+			ix[3] = 0x63
+			ix[0] |= 1 << 6
+		ix[1:3] /= 2
+		if !*f2ee:
+			ix[3] |= 0xf
+		ix += 4
+	ix[0] = 0xff
+
+49c8: only called if active_sprite[0] in (0, 9)

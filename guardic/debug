@@ -1,0 +1,9 @@
+e036: current x
+e037: current y (top = 0, increasing down)
+e071: secret?
+	Set to 0xff; incremented for every wrap.
+	If e04b != 0 (not intro screen), y == 6 and x == 1e, and e071 != 0 (not first time): goto 63ba
+		!!! 1e,6 is below entrance to missing levels.
+		5563: set it to 0.
+		It is called only from 52fb, if 5516 set the carry, which is when the lrlrlr code is entered.
+	-> Can only be entered after k*256 wraps; best choice is k==0.

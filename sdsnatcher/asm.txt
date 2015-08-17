@@ -1,0 +1,48 @@
+6292: use r to determine which enemy fires first.
+9445: all other random.
+
+variables:
+ce87: level.
+ce8d+: max life?
+
+
+Called by:
+77fb	&3 na geraakt worden 2 keer en voor ontploffen, alleen als enemy 2 aanwezig.
+783a	&3 same for enemy 1.
+8f45	na mikken; uitwijken?
+9351	voor schieten door enemy.	jp 97a2 met b=6,hl=random&ff,c=4
+9438	voor schieten zelf, soms.
+a00c	&1 voor schoten door enemy (1x per ronde).
+
+d694=a
+d690=hl
+d692=de
+hl=d6a0
+c=4
+e=16
+d=0
+hl+=16
+bc=random&ff
+*d6b0=random
+*d6b1=0
+*d6b2=6
+
+
+
+a=r
+a+=*c270
+call 945b twice
+*c270=a
+*c272=a
+ret
+
+b=a
+a += ++*c271
+a += *(4000+a)
+a ^= b
+c = a
+a = *c270 & 7
+b = a
+a = c
+rrca * b
+ret

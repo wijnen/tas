@@ -1,0 +1,33 @@
+a = *e062
+if a & 0x80:
+	5542
+hl = 555b + a
+a = *e001	: last key pressed.
+if a == 4:	No key being pressed.
+	return False
+if a == *hl:
+	5532
+*e062 = 0
+return False
+
+5542:
+a &= ~0x80
+a -= 1
+hl = 555b + a
+a = *e001
+if *hl == a:
+	return False
+*e062 &= ~0x80
+return False
+
+5532:
+a = *e062 + 1
+if a == 6:
+	return True	-> code entered.
+*e062 = a & 0x80
+return False
+
+keys:
+258
+147
+036

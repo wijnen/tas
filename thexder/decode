@@ -1,0 +1,206 @@
+#!/usr/bin/python3
+
+import os
+import mmap
+from PIL import Image, ImageDraw
+
+fd = os.open("thexder.rom", os.O_RDONLY)
+src = mmap.mmap(fd, 0, prot = mmap.PROT_READ)
+
+#start = 0x8c70
+#start = 0x86db
+#start = 0x6d81
+start = 0x8e1f
+start -= 0x4000
+
+w = 0x78 * 4
+h = 0x2c
+data = [[9] * w for t in range(h)]
+pos = start
+
+def unpack(pos, special = 0xff):	# 6d68
+	ret = []
+	while True:
+		if src[pos] == special:
+			if src[pos + 1] == special:
+				break
+			ret += [src[pos + 1]] * src[pos + 2]
+			pos += 3
+		else:
+			ret += [src[pos]]
+			pos += 1
+	return ret
+
+def mirror(x):
+	return ((x >> 7) & 1) | ((x >> 5) & 2) | ((x >> 3) & 4) | ((x >> 1) & 8) | ((x << 1) & 0x10) | ((x << 3) & 0x20) | ((x << 5) & 0x40) | ((x << 7) & 0x80)
+
+def make_map(pos, unpacked):	# 6a6e
+	ret = [[None] * w for t in range(h)]
+	count = 0
+	column = 0
+	for x in range(w):
+		if count > 0:
+			count -= 1
+		else:
+			column = src[pos]
+			pos += 1
+			if column == 0xff:
+				column = src[pos]
+				pos += 1
+				count = (src[pos] - 1) & 0xff
+				pos += 1
+		for y in range(h):
+			#if column * 0xb + y >= len(unpacked):
+				#d = 4
+			#else:
+			d = (unpacked[column * 0xb + y // 4] >> ((3 - (y & 3)) * 2)) & 0x3
+			ret[y][x] = d
+	return ret
+
+def unpack_level(pos):	# 6a41
+	ret = []
+	while True:
+		c = src[pos]
+		pos += 1
+		if (c & 0xf0) != 0x50:
+			ret.append(c)
+			continue
+		a = src[pos]
+		pos += 1
+		if a == 0:
+			return ret
+		b = a
+		c &= 3
+		a = c | c << 2 | c << 4 | c << 6
+		ret.extend((a,) * b)
+
+# unpack sprite positions.
+def sprites(pos):	# 6ab1
+	num = src[pos]
+	pos += 1
+	ret = [[None] * 4 for t in range(num)]
+	for b in range(4):
+		e = 0
+		while e < num:
+			if src[pos] != 0xff:
+				ret[e][b] = src[pos]
+				pos += 1
+				e += 1
+			else:
+				t = src[pos + 1]
+				n = src[pos + 2]
+				pos += 3
+				for i in range(n):
+					ret[e][b] = t
+					e += 1
+	for e in ret:
+		e[:] = [((e[1] | (e[2] << 8)) // 2) & 0x1ff, e[0] & 0x3f, e[2] >> 2, e[3], e[0]]
+		#print(':'.join(['%02x' % t for t in e]))
+	return ret
+
+levels = 0x4825 - 0x4000
+num = 10
+starts = [src[levels + t * 10 + 4] | src[levels + t * 10 + 5] << 8 for t in range(num)]
+packed = [src[levels + t * 10 + 8] | src[levels + t * 10 + 9] << 8 for t in range(num)]
+spr = [sprites((src[levels + t * 10 + 6] | src[levels + t * 10 + 7] << 8) - 0x4000) for t in range(num)]
+maps = [make_map(s - 0x4000, unpack_level(p - 0x4000)) for s, p in zip(starts, packed)]
+
+pgt = unpack(0x7692 - 0x4000)
+ct = unpack(0x78b8 - 0x4000)
+
+lvlpgtct = unpack(0x8c70 - 0x4000)
+
+chars = [pgt[t * 8:(t + 1) * 8] for t in range(256)]
+#print('\n'.join('%02x: ' % i + ' '.join(['%02x' % t for t in x]) for i, x in enumerate(chars)))
+
+def make_char(c, level):
+	cpgt = lvlpgtct[(c - 1 + 3 * level) * 8:(c + 3 * level) * 8] if 1 <= c <= 3 else pgt[(c + 3 * level) * 8:(c + 3 * level + 1) * 8]
+	cct = lvlpgtct[(c - 1 + 3 * level) * 8 + 0xf0:(c + 3 * level) * 8 + 0xf0] if 1 <= c <= 3 else pgt[(c + 3 * level) * 8:(c + 3 * level + 1) * 8]
+	return make_char_(cpgt, cct)
+
+def make_char_(cpgt, cct):
+	ret = [[None] * 8 for t in range(8)]
+	for y in range(8):
+		for x in range(8):
+			if y >= len(cct):
+				ret[y][x] = 0
+				continue
+			if (cpgt[y] >> (7 - x)) & 1:
+				ret[y][x] = (cct[y] >> 4) & 0xf
+			else:
+				ret[y][x] = cct[y] & 0xf
+	return ret
+
+# MSX1 hardware palette with a black border.
+palette = [(0, 0, 0), (0, 0, 0), (62, 184, 73), (116, 208, 125), (89, 85, 224), (128, 118, 241), (185, 94, 81), (101, 219, 239), (219, 101, 89), (255, 137, 125), (204, 195, 94), (222, 208, 135), (58, 162, 65), (181, 102, 181), (204, 204, 204), (255, 255, 255)]
+
+def paint_char(pix, x, y, c, alpha0, alpha1):
+	for cy in range(8):
+		for cx in range(8):
+			code = c[cy][cx]
+			pix[x * 8 + cx, y * 8 + cy] = palette[code] + (alpha1 if code != 0 else alpha0)
+
+enemies = unpack(0x79e4 - 0x4000)
+
+num = 0x54
+e = 0
+pos = 0x745e - 0x4000
+enums = []
+eaddrs = []
+while e < num:
+	n = src[pos]
+	eaddrs.append(src[pos + 1] | src[pos + 2] << 8)
+	i = (eaddrs[-1] - 0xc000) / 0x20
+	#print('%04x(%x): %02x' % (eaddrs[-1], i, n))
+	enums.append(0)
+	while n & 3:
+		n >>= 2
+		enums[-1] += 1
+		e += 1
+	pos += 3
+
+emap = [[None] * (2 * len(enums)) for t in range(2 * 4)]
+eimg = Image.new('RGB', (16 * len(enums), 16 * 4))
+enemiesimg = []
+pix = eimg.load()
+e = 0
+for x, enemy in enumerate(enums):
+	for y in range(enemy):
+		for ix in range(2):
+			for iy in range(2):
+				c = make_char_(enemies[eaddrs[x] - 0xc000 + (4 * y + 2 * iy + ix) * 8:eaddrs[x] - 0xc000 + (4 * y + 2 * iy + ix + 1) * 8], enemies[eaddrs[x] - 0xc000 + (4 * y + 2 * iy + ix) * 8 + 0xa80:eaddrs[x] - 0xc000 + (4 * y + 2 * iy + ix + 1) * 8 + 0xa80])
+				paint_char(pix, x * 2 + ix, y * 2 + iy, c, (0,), (128,))
+		e += 1
+	enemiesimg.append(eimg.crop((x * 16, 0, (x + 1) * 16, 16)))
+eimg.save('/tmp/enemies.png')
+
+for i, (m, s) in enumerate(zip(maps, spr)):
+	print('level %d' % (i + 1))
+	wallimg = Image.new('RGB', (16, 16))
+	wallpix = wallimg.load()
+	for y in range(2):
+		for x in range(2):
+			paint_char(wallpix, x, y, make_char(3, i), (), ())
+	enemiesimg[0x2a] = wallimg.copy()
+	walldraw = ImageDraw.Draw(enemiesimg[0x2a])
+	walldraw.rectangle((0, 0, 15, 15))
+	img = Image.new('RGB', (8 * len(m[0]), 8 * len(m)))
+	draw = ImageDraw.Draw(img)
+	pix = img.load()
+	for y in range(len(m)):
+		for x in range(len(m[0])):
+			c = make_char(m[y][x], i % 10)
+			paint_char(pix, x, y, c, (), ())
+	for j, sp in enumerate(s):
+		if sp[4] & ~0x3f:
+			print('x:%x y:%x shape:%x [3]:%x [0]:%x' % (sp[0], sp[1], sp[2], sp[3], sp[4]))
+		targetx = sp[0] * 8
+		targety = sp[1] * 8
+		tmp = img.crop((targetx, targety, targetx + 16, targety + 16))
+		alpha = .5 if sp[2] in (9, 0x17, 0x1a, 0x1b, 0x1c) else 0
+		walled = Image.blend(enemiesimg[sp[2]], wallimg, alpha)
+		img.paste(walled, (targetx, targety, targetx + 16, targety + 16))
+		#draw.text((targetx, targety), '%x' % (0xef70 + 4 * j))
+		draw.text((targetx, targety - 8), '%x' % (sp[3]))
+	img.save('/tmp/level-%d.png' % (i + 1))
+	#print('\n'.join(''.join(' .+#!'[m[y][x]] for x in range(w)) for y in range(h)))
